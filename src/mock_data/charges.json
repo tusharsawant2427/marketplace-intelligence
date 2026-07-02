@@ -1,0 +1,11 @@
+{
+	"advertisement_charge": 0.00,
+	"packaging_charge": 1.00,
+	"transport_charge": 0.00,
+	"delivery_charge_local": 0.00,
+	"delivery_charge_regional": 0.00,
+	"delivery_charge_national": 0.00,
+	"platform_charge_local": 145.00,
+	"platform_charge_regional": 169.00,
+	"platform_charge_national": 204.00
+}

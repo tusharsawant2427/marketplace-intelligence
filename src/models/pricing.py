@@ -8,3 +8,4 @@ class Pricing:
     selling_price: float | None = None
     mrp: float | None = None
     recommended_price: float | None = None
+    currency: str = "INR"
