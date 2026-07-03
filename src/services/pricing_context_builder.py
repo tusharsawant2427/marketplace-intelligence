@@ -5,10 +5,17 @@ from src.contexts.pricing_analysis_context import PricingAnalysisContext
 
 class PricingContextBuilder:
     """ Builds a pricing context for a given listing. """
+    def __init__(self, ):
+        self.listing_tool = FetchListingTool()
+        self.pricing_tool = FetchPricingTool()
+        self.charges_tool = FetchChargesTool()
+
     def build(self, request) -> PricingAnalysisContext:
-            listing = FetchListingTool().execute(request.listing_id)
-            pricing = FetchPricingTool().execute(request.listing_id)
-            charges = FetchChargesTool().execute(request.listing_id)
+            
+            listing = self.listing_tool.execute(request.listing_id)
+            pricing = self.pricing_tool.execute(request.listing_id)
+            charges = self.charges_tool.execute(request.listing_id)
+            
             return PricingAnalysisContext(
                     request=request,
                     listing=listing,
