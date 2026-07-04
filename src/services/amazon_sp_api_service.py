@@ -130,6 +130,38 @@ class AmazonSpApiService:
             print(f"SP-API Pricing Error for {asin}: {e}")
             return SpApiPricingData(asin, 700.0, "INR", False, 3)
 
+    # ---- Read-only detail endpoints (Catalog, Listings issues, Competitive Pricing) ----
+
+    async def get_catalog_item(self, asin: str, marketplace_id: str,
+                               included_data: str = "attributes,images,summaries,identifiers,productTypes,salesRanks") -> dict:
+        """Catalog Items API: attributes, images, summaries, identifiers for an ASIN (read)."""
+        path = f"/catalog/2022-04-01/items/{asin}"
+        params = {"marketplaceIds": marketplace_id, "includedData": included_data}
+        resp = await self._request("GET", path, params=params)
+        return resp.json()
+
+    async def get_item_offers(self, asin: str, marketplace_id: str, condition: str = "New") -> dict:
+        """Pricing API: all current offers for an ASIN (read) — buy-box, competitor prices/sellers."""
+        path = f"/products/pricing/v0/items/{asin}/offers"
+        params = {"MarketplaceId": marketplace_id, "ItemCondition": condition}
+        resp = await self._request("GET", path, params=params)
+        return resp.json()
+
+    async def get_competitive_pricing(self, asin: str, marketplace_id: str) -> dict:
+        """Pricing API: competitive price summary (buy-box + lowest prices) for an ASIN (read)."""
+        path = "/products/pricing/v0/competitivePrice"
+        params = {"MarketplaceId": marketplace_id, "Asins": asin, "ItemType": "Asin"}
+        resp = await self._request("GET", path, params=params)
+        return resp.json()
+
+    async def get_listings_item(self, seller_id: str, sku: str, marketplace_id: str,
+                                included_data: str = "issues,summaries,attributes") -> dict:
+        """Listings Items API: a seller's own listing incl. issues[] (suppression/errors) (read)."""
+        path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
+        params = {"marketplaceIds": marketplace_id, "includedData": included_data}
+        resp = await self._request("GET", path, params=params)
+        return resp.json()
+
     async def get_listing_status(self, asin: str, seller_id: str, marketplace_id: str) -> SpApiListingStatus:
         """
         Calls the ListingsItem API to fetch current status.

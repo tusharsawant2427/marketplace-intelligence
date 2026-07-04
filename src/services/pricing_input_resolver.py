@@ -12,12 +12,11 @@ The resolver never guesses when a choice is ambiguous (>1 option): it returns
 status="need_input" with the exact `missing` field and `suggestions` to show the user.
 When everything is pinned it returns status="ready".
 """
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.database.repository import ErpRepository
+from src.clients.erp_api_client import ErpApiClient
 
 
 async def resolve_pricing_inputs(
-    session: AsyncSession,
+    client: ErpApiClient,
     platform_unique_id: str = None,
     listing_id: int = None,
     osp_id: int = None,
@@ -25,7 +24,7 @@ async def resolve_pricing_inputs(
     node_id: int = None,
     fulfillment_meta_id: int = None,
 ) -> dict:
-    repo = ErpRepository(session)
+    repo = client
     resolved: dict = {}
 
     def need(missing: str, message: str, suggestions: dict = None) -> dict:

@@ -542,6 +542,109 @@ class ErpRepository:
         """), {"fid": fulfillment_meta_id})).fetchone()
         return int(row.marketplace_id) if row else None
 
+    async def get_rule_inputs(self, osp_id: int, marketplace_id: int = None, now: datetime = None) -> dict:
+        """
+        Inputs the deterministic Rule Engine needs: MRP, minimum listing price, HSN presence,
+        royalty flag/presence, and title completeness for an OSP (optionally on a marketplace).
+        """
+        now = now or datetime.now()
+        osp = (await self.session.execute(
+            text("SELECT name, is_royalty FROM online_selling_products WHERE id = :o"), {"o": osp_id})).fetchone()
+
+        mrp_row = (await self.session.execute(text("""
+            SELECT mrp FROM saleable_mrps WHERE mrpable_id = :o AND mrpable_type LIKE '%OnlineSellingProduct'
+            AND wef <= :now ORDER BY wef DESC LIMIT 1
+        """), {"o": osp_id, "now": now})).fetchone()
+
+        min_price = None
+        if marketplace_id is not None:
+            mp = (await self.session.execute(text("""
+                SELECT lm.minimum_listing_price FROM listing_marketplaces lm
+                JOIN listings l ON lm.listing_id = l.id
+                WHERE l.online_selling_product_id = :o AND lm.marketplace_id = :m AND lm.deleted_at IS NULL
+                ORDER BY (lm.state = 'ACTIVE') DESC LIMIT 1
+            """), {"o": osp_id, "m": marketplace_id})).fetchone()
+            min_price = float(mp.minimum_listing_price) if mp and mp.minimum_listing_price is not None else None
+
+        hsn = (await self.session.execute(text("""
+            SELECT 1 FROM saleable_hsns WHERE hsnable_id = :o AND hsnable_type LIKE '%OnlineSellingProduct'
+            AND type = 'SALE' LIMIT 1
+        """), {"o": osp_id})).fetchone()
+
+        royalty = (await self.session.execute(text("""
+            SELECT 1 FROM saleable_royalty_details WHERE royaltyable_id = :o
+            AND royaltyable_type LIKE '%OnlineSellingProduct' LIMIT 1
+        """), {"o": osp_id})).fetchone()
+
+        return {
+            "osp_id": osp_id,
+            "name": osp.name if osp else None,
+            "mrp": float(mrp_row.mrp) if mrp_row else None,
+            "minimum_listing_price": min_price,
+            "has_hsn": bool(hsn),
+            "is_royalty": bool(osp.is_royalty) if osp else False,
+            "has_royalty_detail": bool(royalty),
+        }
+
+    async def get_listing_erp_facts(self, platform_unique_id: str, now: datetime = None) -> dict | None:
+        """
+        ERP-side facts for an Amazon listing (by platform id / ASIN), for Listing Health & Sync:
+        listing/verification state, OSP name, saleable MRP, dimensions (if recorded), and the
+        marketplace/category it's listed under. Returns None if no listing matches.
+        """
+        now = now or datetime.now()
+        listing = (await self.session.execute(text("""
+            SELECT l.id AS listing_id, l.online_selling_product_id AS osp_id, l.state AS listing_state,
+                   l.verification_state, l.inactive_status_reason_id, p.name AS platform_name,
+                   osp.name AS osp_name
+            FROM listings l
+            JOIN platforms p ON l.platform_id = p.id
+            JOIN online_selling_products osp ON l.online_selling_product_id = osp.id
+            WHERE l.platform_unique_id = :pid AND l.deleted_at IS NULL
+            ORDER BY (l.state IN ('ACTIVE','UPLOADED')) DESC, l.id DESC LIMIT 1
+        """), {"pid": platform_unique_id})).fetchone()
+        if not listing:
+            return None
+        osp_id = listing.osp_id
+
+        mrp_row = (await self.session.execute(text("""
+            SELECT mrp FROM saleable_mrps
+            WHERE mrpable_id = :o AND mrpable_type LIKE '%OnlineSellingProduct' AND wef <= :now
+            ORDER BY wef DESC LIMIT 1
+        """), {"o": osp_id, "now": now})).fetchone()
+
+        dims = (await self.session.execute(text("""
+            SELECT length, width, height, weight FROM dimensions
+            WHERE dimensionable_id = :o AND dimensionable_type LIKE '%OnlineSellingProduct' AND wef <= :now
+            ORDER BY wef DESC LIMIT 1
+        """), {"o": osp_id, "now": now})).fetchone()
+
+        mkt = (await self.session.execute(text("""
+            SELECT lm.marketplace_id, m.name AS marketplace_name, lm.node_id, n.name AS node_name
+            FROM listing_marketplaces lm
+            JOIN marketplaces m ON lm.marketplace_id = m.id
+            LEFT JOIN nodes n ON lm.node_id = n.id
+            WHERE lm.listing_id = :lid AND lm.deleted_at IS NULL
+            ORDER BY (lm.state = 'ACTIVE') DESC LIMIT 1
+        """), {"lid": listing.listing_id})).fetchone()
+
+        return {
+            "listing_id": listing.listing_id,
+            "osp_id": osp_id,
+            "platform_name": listing.platform_name,
+            "osp_name": listing.osp_name,
+            "listing_state": listing.listing_state,
+            "verification_state": listing.verification_state,
+            "inactive_status_reason_id": listing.inactive_status_reason_id,
+            "mrp": float(mrp_row.mrp) if mrp_row else None,
+            "dimensions": ({"length": dims.length, "width": dims.width, "height": dims.height,
+                            "weight": dims.weight} if dims else None),
+            "marketplace_id": mkt.marketplace_id if mkt else None,
+            "marketplace_name": mkt.marketplace_name if mkt else None,
+            "node_id": mkt.node_id if mkt else None,
+            "node_name": mkt.node_name if mkt else None,
+        }
+
     async def get_supported_marketplaces(self) -> list[dict]:
         """Marketplaces we can price for (i.e. that have fee masters configured)."""
         rows = (await self.session.execute(text("""

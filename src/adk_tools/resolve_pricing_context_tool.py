@@ -1,4 +1,4 @@
-from src.database.connection import async_session
+from src.clients.erp_api_client import ErpApiClient, ErpApiError
 from src.services.pricing_input_resolver import resolve_pricing_inputs
 
 
@@ -12,7 +12,8 @@ async def resolve_pricing_context(
 ) -> dict:
     """
     Resolve the identifiers needed for a price recommendation from whatever the user gave.
-    ALWAYS call this before recommend_optimal_price, and re-call it as the user supplies more.
+    ALWAYS call this before recommend_optimal_price / analyze_listing, and re-call it as the user
+    supplies more.
 
     Provide any subset of:
         platform_unique_id: The platform listing id / ASIN / SKU (e.g. "B07Q46XQQC").
@@ -28,28 +29,23 @@ async def resolve_pricing_context(
 
     Returns a dict with:
         status = "ready"      -> `resolved` holds osp_id, marketplace_id, node_id,
-                                 fulfillment_meta_id, platform_unique_id and has_live_pricing;
-                                 proceed to recommend_optimal_price.
+                                 fulfillment_meta_id, platform_unique_id and has_live_pricing.
         status = "need_input" -> `missing` names the next field to collect and `suggestions`
-                                 lists the exact options to offer the user. Ask, then re-call
-                                 this tool with the choice.
+                                 lists the exact options to offer the user. Ask, then re-call this.
         status = "not_found"  -> the identifier matched nothing; ask the user to re-check.
-
-    When resolved.has_live_pricing is False, the platform (e.g. Flipkart, Meesho) has no live
-    marketplace integration: tell the user live buy-box data isn't available and that the
-    recommendation will be a deterministic ERP-fee-based estimate.
     """
-
     try:
-        async with async_session() as session:
-            return await resolve_pricing_inputs(
-                session,
-                platform_unique_id=platform_unique_id,
-                listing_id=listing_id,
-                osp_id=osp_id,
-                marketplace_id=marketplace_id,
-                node_id=node_id,
-                fulfillment_meta_id=fulfillment_meta_id,
-            )
+        client = ErpApiClient()
+        return await resolve_pricing_inputs(
+            client,
+            platform_unique_id=platform_unique_id,
+            listing_id=listing_id,
+            osp_id=osp_id,
+            marketplace_id=marketplace_id,
+            node_id=node_id,
+            fulfillment_meta_id=fulfillment_meta_id,
+        )
+    except ErpApiError as e:
+        return {"status": "error", "message": str(e)}
     except Exception as e:
         return {"status": "error", "message": f"Error resolving pricing context: {e}"}
