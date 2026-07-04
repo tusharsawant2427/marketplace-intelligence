@@ -1,4 +1,5 @@
 from src.clients.erp_api_client import ErpApiClient, ErpApiError
+from src.adk_tools.dimensions_tools import get_package_dimensions
 
 
 async def recommend_optimal_price(
@@ -7,30 +8,45 @@ async def recommend_optimal_price(
     node_id: int,
     fulfillment_meta_id: int,
     target_margin_percentage: float,
-    weight: float,
-    length: float,
-    width: float,
-    height: float,
+    asin: str = None,
+    weight: float = None,
+    length: float = None,
+    width: float = None,
+    height: float = None,
     selling_zone: str = "National",
 ) -> dict:
     """
     Recommend the optimal listing price to hit a target profit margin, computed by the ERP's
     bounded-search engine. Returns the optimal price and the resulting fee/profit (LPA) breakdown.
 
-    Resolve osp_id/marketplace_id/node_id/fulfillment_meta_id via resolve_pricing_context first, and
-    collect the package weight (g) and length/width/height (cm) from the user (needed for fees).
+    Resolve osp_id/marketplace_id/node_id/fulfillment_meta_id via resolve_pricing_context first.
+    Package weight (g) and dimensions (cm) are fetched automatically from the Amazon catalog when an
+    `asin` is provided and they are not passed — you normally do NOT need to ask the user for them.
 
     Args:
         osp_id, marketplace_id, node_id, fulfillment_meta_id: resolved identifiers.
         target_margin_percentage: desired profit margin, e.g. 20 for 20%.
-        weight, length, width, height: package weight (g) and dimensions (cm).
+        asin: the ASIN (from resolve_pricing_context's platform_unique_id) — used to auto-fetch dims.
+        weight, length, width, height: package weight (g)/dims (cm); auto-filled from `asin` if omitted.
         selling_zone: LOCAL / REGIONAL / NATIONAL (defaults to National).
 
-    Returns:
-        {"optimal_price": 299.0, "lpa_breakdown": {"commission": ..., "net_platform_fee": ...,
-          "gross_profit": ..., "profit_pct": 20.0, ...}}
+    Returns {"optimal_price": ..., "lpa_breakdown": {...}}. If dimensions are neither supplied nor
+    fetchable, returns status="need_input" asking for weight/dimensions.
     """
     try:
+        if None in (weight, length, width, height) and asin:
+            dims = await get_package_dimensions(asin, marketplace_id)
+            if dims.get("status") not in ("error", "not_found"):
+                weight = weight or dims.get("weight")
+                length = length or dims.get("length")
+                width = width or dims.get("width")
+                height = height or dims.get("height")
+
+        if None in (weight, length, width, height):
+            return {"status": "need_input",
+                    "message": "Package weight and dimensions are required and could not be fetched "
+                               "from the catalog. Please provide weight (g) and length/width/height (cm)."}
+
         return await ErpApiClient().get_price_recommendation(
             osp_id,
             marketplace_id=marketplace_id,

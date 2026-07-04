@@ -1,6 +1,7 @@
 """Recommendation specialist — the business consultant; synthesizes other domains + rules."""
 from google.adk.agents import Agent
 from src.adk_tools.resolve_pricing_context_tool import resolve_pricing_context
+from src.adk_tools.dimensions_tools import get_package_dimensions
 from src.adk_tools.recommend_price_tool import recommend_optimal_price
 from src.adk_tools.competitor_tools import competitor_analysis, am_i_overpriced
 from src.adk_tools.rule_engine_tools import check_listing_rules
@@ -23,19 +24,20 @@ recommendation_specialist = Agent(
 
     Typical flow for a product:
     1. Resolve identifiers with `resolve_pricing_context` if you only have an ASIN/OSP.
-    2. Gather signals as needed:
+    2. Gather signals as needed (pass `asin` — weight/dimensions auto-fetch; never ask the user):
        - `competitor_analysis(asin)` / `am_i_overpriced(asin, our_price)` — market position.
-       - `recommend_optimal_price(...)` — the margin-optimal price.
+       - `recommend_optimal_price(..., asin=asin)` — the margin-optimal price (dims auto-fetch).
        - `profit_drivers(osp_id, marketplace_id)` — what's moving profit.
        - `stock_for_osp(osp_id)` / `reorder_alerts()` — inventory constraints.
-    3. Before recommending any price, validate it with `check_listing_rules(osp_id, marketplace_id,
+    4. Before recommending any price, validate it with `check_listing_rules(osp_id, marketplace_id,
        listing_price, margin_pct)`. NEVER recommend an action the rules reject; say why instead.
-    4. Output: a ranked list of actions (e.g. "Lower price to X to win the Buy Box — passes rules",
+    5. Output: a ranked list of actions (e.g. "Lower price to X to win the Buy Box — passes rules",
        "Reorder title Y — stock below reorder level"), each with a one-line justification from the
        data. Be concrete and honest about what data is missing.
     """,
     tools=[
         resolve_pricing_context,
+        get_package_dimensions,
         recommend_optimal_price,
         competitor_analysis,
         am_i_overpriced,

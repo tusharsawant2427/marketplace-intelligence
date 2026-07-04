@@ -1,4 +1,5 @@
 from src.clients.erp_api_client import ErpApiClient, ErpApiError
+from src.adk_tools.dimensions_tools import get_package_dimensions
 
 
 async def analyze_listing(
@@ -6,10 +7,11 @@ async def analyze_listing(
     marketplace_id: int,
     node_id: int,
     listing_price: float,
-    weight: float,
-    length: float,
-    width: float,
-    height: float,
+    asin: str = None,
+    weight: float = None,
+    length: float = None,
+    width: float = None,
+    height: float = None,
     marketplace_mrp: float = None,
     advertisement_charge_pct: float = None,
     listing_price_discount: float = 0.0,
@@ -38,9 +40,25 @@ async def analyze_listing(
         local/regional/national_delivery_charge: per-zone delivery (default 0).
         step_level_name: Amazon step-program level (PREMIUM/ADVANCED/STANDARD/BASIC/NO_LEVEL).
 
-    Returns {"header": {...}, "rows": [...]}. If weight/dimensions are unknown, ask the user.
+    Package weight/dimensions are fetched automatically from the Amazon catalog when an `asin` is
+    provided and they are not passed — you normally do NOT need to ask the user for them.
+
+    Returns {"header": {...}, "rows": [...]}, or status="need_input" if dims are neither given nor
+    fetchable.
     """
     try:
+        if None in (weight, length, width, height) and asin:
+            dims = await get_package_dimensions(asin, marketplace_id)
+            if dims.get("status") not in ("error", "not_found"):
+                weight = weight or dims.get("weight")
+                length = length or dims.get("length")
+                width = width or dims.get("width")
+                height = height or dims.get("height")
+        if None in (weight, length, width, height):
+            return {"status": "need_input",
+                    "message": "Package weight and dimensions are required and could not be fetched; "
+                               "please provide weight (g) and length/width/height (cm)."}
+
         return await ErpApiClient().get_lpa_analysis(
             osp_id,
             marketplace_id=marketplace_id,
