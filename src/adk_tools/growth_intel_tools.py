@@ -25,9 +25,11 @@ async def morning_briefing(days: int = 7) -> dict:
             """), {"d": days})).fetchone()
             breached = (await s.execute(text(
                 "SELECT COUNT(*) c FROM fact_title_re_order_levels WHERE is_breached=1"))).fetchone()
-            tofix = (await s.execute(text("""
-                SELECT COUNT(*) c FROM listings
-                WHERE (state='INACTIVE' OR verification_state<>'VERIFIED') AND deleted_at IS NULL
+            # Real marketplace-level listing counts (Amazon-India), NOT the ERP `listings` pipeline table.
+            mkt = (await s.execute(text("""
+                SELECT SUM(lm.state='ACTIVE') active, SUM(lm.state='INACTIVE') inactive
+                FROM listing_marketplaces lm JOIN marketplaces m ON lm.marketplace_id=m.id
+                WHERE m.name='Amazon-India' AND lm.deleted_at IS NULL
             """))).fetchone()
             top = (await s.execute(text("""
                 SELECT MAX(item_name) item_name, SUM(qty) units FROM product_wise_net_sales_reports
@@ -39,7 +41,7 @@ async def morning_briefing(days: int = 7) -> dict:
             "window_days": days,
             "sales": {"units": int(sales.units), "revenue": float(sales.revenue), "orders": int(sales.orders)},
             "inventory_alerts": {"breached_count": int(breached.c)},
-            "listings_to_fix": {"suppressed_or_inactive": int(tofix.c)},
+            "amazon_india_listings": {"active": int(mkt.active or 0), "inactive": int(mkt.inactive or 0)},
             "top_sellers": [{"item_name": r.item_name, "units": int(r.units)} for r in top],
         }
     except Exception as e:
@@ -61,9 +63,10 @@ async def growth_opportunities() -> dict:
                     ORDER BY (re_order_level-stock_in_hand) DESC LIMIT 1) top
                 FROM fact_title_re_order_levels WHERE is_breached=1
             """))).fetchone()
-            fix = (await s.execute(text("""
-                SELECT COUNT(*) c FROM listings
-                WHERE (state='INACTIVE' OR verification_state<>'VERIFIED') AND deleted_at IS NULL
+            # Real inactive Amazon-India marketplace listings (candidates to review for reactivation).
+            inactive_mkt = (await s.execute(text("""
+                SELECT COUNT(*) c FROM listing_marketplaces lm JOIN marketplaces m ON lm.marketplace_id=m.id
+                WHERE m.name='Amazon-India' AND lm.state='INACTIVE' AND lm.deleted_at IS NULL
             """))).fetchone()
             slow = (await s.execute(text("""
                 SELECT MAX(item_name) nm, SUM(qty) u FROM product_wise_net_sales_reports
@@ -76,8 +79,10 @@ async def growth_opportunities() -> dict:
             {"type": "restock", "count": int(restock.c),
              "detail": "Products below reorder level — restock to avoid lost sales.",
              "examples": [restock.top] if restock.top else []},
-            {"type": "fix_listings", "count": int(fix.c),
-             "detail": "Listings inactive or unverified — fix to recover visibility/sales."},
+            {"type": "review_inactive_amazon_listings", "count": int(inactive_mkt.c),
+             "detail": "Inactive Amazon-India marketplace listings — review which should be reactivated. "
+                       "(Per-listing suppression is confirmed on demand via the listing_health tool, not "
+                       "in bulk.)"},
             {"type": "promote_slow_movers", "count": len(slow),
              "detail": "Slow-moving titles — consider promotion/discount/bundling.",
              "examples": [r.nm for r in slow[:3]]},
