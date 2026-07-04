@@ -7,7 +7,7 @@ from src.models.business_question_request import BusinessQuestionRequest
 
 
 @dataclass
-class PricingAnalysisContext:
+class ListingIntelligenceContext:
     """Everything required for pricing analysis."""
 
     request: BusinessQuestionRequest

@@ -1,22 +1,8 @@
-from dataclasses import asdict
-
-
 from src.services.listing_intelligence_service import ListingIntelligenceService
 from src.models.business_question_request import BusinessQuestionRequest
 
 def build_pricing_context(question: str, listing_id: str, marketplace: str = 'Amazon'):
-    """
-    Build complete pricing analysis data for a marketplace listing.
-    Use this tool whenever the user asks about:
-    - Listing profitability
-    - Selling price 
-    - Minimum price 
-    - Platform charge
-    - Pricing recommendation
-    - Listing analysis
-    
-    Do not use this tool for general conversations.
-    """
+    """ Builds the pricing context for a given business question request."""
     
     request = BusinessQuestionRequest(
         question=question,
@@ -28,4 +14,4 @@ def build_pricing_context(question: str, listing_id: str, marketplace: str = 'Am
     builder = ListingIntelligenceService()
     context = builder.build(request)
     
-    return asdict(context)
+    return context
