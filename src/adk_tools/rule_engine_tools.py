@@ -1,6 +1,9 @@
-"""Rule Engine tool — deterministic policy checks for a proposed listing/price."""
-from src.database.connection import async_session
-from src.database.repository import ErpRepository
+"""Rule Engine tool — deterministic policy checks for a proposed listing/price.
+
+Inputs come from the ERP API; the deterministic evaluation (`evaluate_rules`) stays local — it is
+pure policy logic with no secrets or data access.
+"""
+from src.clients.erp_api_client import ErpApiClient, ErpApiError
 from src.services.rule_engine import evaluate_rules
 
 
@@ -21,9 +24,9 @@ async def check_listing_rules(osp_id: int, marketplace_id: int = None,
     Returns {"osp_id", "publishable": bool, "results": [{"rule","status","message"}], "inputs": {...}}.
     """
     try:
-        async with async_session() as session:
-            inputs = await ErpRepository(session).get_rule_inputs(osp_id, marketplace_id)
-        outcome = evaluate_rules(inputs, listing_price=listing_price, margin_pct=margin_pct)
-        return {"osp_id": osp_id, **outcome, "inputs": inputs}
-    except Exception as e:
+        inputs = await ErpApiClient().rule_inputs(osp_id, marketplace_id)  # inputs only, from ERP
+    except ErpApiError as e:
         return {"status": "error", "message": f"Rule check failed for OSP {osp_id}: {e}"}
+    # Deterministic policy eval stays local: min-price floor, MRP cap, 8% margin, HSN, royalty, title.
+    outcome = evaluate_rules(inputs, listing_price=listing_price, margin_pct=margin_pct)
+    return {"osp_id": osp_id, **outcome, "inputs": inputs}

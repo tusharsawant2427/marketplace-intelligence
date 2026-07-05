@@ -1,8 +1,5 @@
-"""Listing Health tools — Amazon catalog content completeness + ERP listing state (read-only)."""
-from src.services.sp_api_factory import build_sp_api
-from src.services.amazon_sp_api_service import SpApiWriteOperationBlocked
-from src.database.connection import async_session
-from src.database.repository import ErpRepository
+"""Listing Health tools — Amazon catalog content completeness + ERP listing state (read-only, via ERP API)."""
+from src.clients.erp_api_client import ErpApiClient, ErpApiError
 
 
 async def listing_health(asin: str, marketplace_id: int = 1) -> dict:
@@ -22,42 +19,8 @@ async def listing_health(asin: str, marketplace_id: int = 1) -> dict:
     suppression is inferred from ERP state and the catalog checks.
     """
     try:
-        svc, amazon_marketplace_id = await build_sp_api(marketplace_id)
-        cat = await svc.get_catalog_item(asin, amazon_marketplace_id)
-        summary = (cat.get("summaries") or [{}])[0]
-        images = ((cat.get("images") or [{}])[0]).get("images", [])
-        attrs = cat.get("attributes", {})
-        title = summary.get("itemName")
-
-        checks = {
-            "has_title": bool(title),
-            "title_length_ok": bool(title) and len(title) >= 30,
-            "has_multiple_images": len(images) >= 4,
-            "has_brand": bool(attrs.get("brand")),
-            "has_bullet_points": bool(attrs.get("bullet_point")),
-            "has_description": bool(attrs.get("product_description")),
-            "has_sales_rank": bool(cat.get("salesRanks")),
-        }
-        score = round(100.0 * sum(1 for v in checks.values() if v) / len(checks), 1)
-
-        facts = None
-        async with async_session() as session:
-            facts = await ErpRepository(session).get_listing_erp_facts(asin)
-
-        return {
-            "asin": asin,
-            "content_completeness_score": score,
-            "checks": checks,
-            "image_count": len(images),
-            "title": title,
-            "erp_state": None if not facts else {
-                "listing_state": facts["listing_state"],
-                "verification_state": facts["verification_state"],
-                "inactive_status_reason_id": facts["inactive_status_reason_id"],
-                "osp_name": facts["osp_name"],
-            },
-        }
-    except SpApiWriteOperationBlocked:
-        raise
-    except Exception as e:
+        # Passthrough: Laravel merges the Amazon catalog checks + ERP state and returns the score.
+        # `erp_state` is null when no ERP listing matches the ASIN (still a 200).
+        return await ErpApiClient().listing_health(marketplace_id, asin)
+    except ErpApiError as e:
         return {"status": "error", "message": f"Listing health check failed for {asin}: {e}"}

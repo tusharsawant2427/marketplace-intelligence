@@ -1,13 +1,23 @@
-"""Listing Optimization tools — SEO score + Gemini-rewritten title/bullets/description."""
+"""Listing Optimization tools — SEO score + Gemini-rewritten title/bullets/description.
+
+Data (current catalog content) comes from the ERP API; the SEO-gap check and the Gemini rewrite stay
+local (LLM generation, no secrets/data-access). This tool never edits the live listing.
+"""
 from google import genai
-from src.services.sp_api_factory import build_sp_api
-from src.services.amazon_sp_api_service import SpApiWriteOperationBlocked
+from src.clients.erp_api_client import ErpApiClient, ErpApiError
 
 _MODEL = "gemini-2.5-flash"
 
 
-def _values(attr_list) -> list[str]:
-    return [a.get("value") for a in (attr_list or []) if a.get("value")]
+def _seo_gaps(title: str, bullets: list, description: str) -> list[str]:
+    gaps = []
+    if len(title) < 50:
+        gaps.append("Title is short (<50 chars) — add key attributes/keywords.")
+    if len(bullets) < 5:
+        gaps.append(f"Only {len(bullets)} bullet points — Amazon allows 5.")
+    if not description:
+        gaps.append("No description / A+ text.")
+    return gaps
 
 
 async def optimize_listing_content(asin: str, marketplace_id: int = 1) -> dict:
@@ -26,24 +36,18 @@ async def optimize_listing_content(asin: str, marketplace_id: int = 1) -> dict:
              this tool never edits the live listing.
     """
     try:
-        svc, amazon_marketplace_id = await build_sp_api(marketplace_id)
-        cat = await svc.get_catalog_item(asin, amazon_marketplace_id)
-        summary = (cat.get("summaries") or [{}])[0]
-        attrs = cat.get("attributes", {})
-        title = summary.get("itemName") or ""
-        bullets = _values(attrs.get("bullet_point"))
-        description = " ".join(_values(attrs.get("product_description")))
-        brand = (attrs.get("brand") or [{}])[0].get("value")
+        current = await ErpApiClient().catalog_content(marketplace_id, asin)  # data: from ERP
+    except ErpApiError as e:
+        return {"status": "error", "message": f"Listing optimization failed for {asin}: {e}"}
 
-        seo_gaps = []
-        if len(title) < 50:
-            seo_gaps.append("Title is short (<50 chars) — add key attributes/keywords.")
-        if len(bullets) < 5:
-            seo_gaps.append(f"Only {len(bullets)} bullet points — Amazon allows 5.")
-        if not description:
-            seo_gaps.append("No description / A+ text.")
+    title = current.get("title") or ""
+    bullets = current.get("bullets") or []
+    description = current.get("description") or ""
+    brand = current.get("brand")
 
-        prompt = f"""You are an Amazon SEO expert. Rewrite this listing following Amazon best
+    seo_gaps = _seo_gaps(title, bullets, description)  # local
+
+    prompt = f"""You are an Amazon SEO expert. Rewrite this listing following Amazon best
 practices (keyword-rich but not stuffed, title <= 200 chars, exactly 5 benefit-led bullet points,
 a concise scannable description). Product brand: {brand}.
 
@@ -57,16 +61,15 @@ Return:
 3. Optimized Description
 Keep claims consistent with the current content; do not invent specs."""
 
-        client = genai.Client()
+    try:
+        client = genai.Client()  # local LLM, no secrets/DB
         resp = client.models.generate_content(model=_MODEL, contents=prompt)
-
-        return {
-            "asin": asin,
-            "current": {"title": title, "bullet_count": len(bullets), "has_description": bool(description)},
-            "seo_gaps": seo_gaps,
-            "suggestions": resp.text,
-        }
-    except SpApiWriteOperationBlocked:
-        raise
     except Exception as e:
-        return {"status": "error", "message": f"Listing optimization failed for {asin}: {e}"}
+        return {"status": "error", "message": f"Listing optimization rewrite failed for {asin}: {e}"}
+
+    return {
+        "asin": asin,
+        "current": {"title": title, "bullet_count": len(bullets), "has_description": bool(description)},
+        "seo_gaps": seo_gaps,
+        "suggestions": resp.text,
+    }

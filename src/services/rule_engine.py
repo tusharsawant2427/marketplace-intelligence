@@ -21,7 +21,7 @@ def evaluate_rules(inputs: dict, listing_price: float = None, margin_pct: float 
     """
     Apply business rules to a proposed listing.
 
-    inputs: from ErpRepository.get_rule_inputs (mrp, minimum_listing_price, has_hsn, is_royalty,
+    inputs: from ErpApiClient.rule_inputs (mrp, minimum_listing_price, has_hsn, is_royalty,
             has_royalty_detail, name). listing_price / margin_pct: the proposed scenario (optional).
     Returns {"publishable": bool, "results": [RuleResult...as dicts]}. `publishable` is False if any
     rule fails.
