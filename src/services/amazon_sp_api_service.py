@@ -190,3 +190,8 @@ class AmazonSpApiService:
         except Exception as e:
             print(f"SP-API Listing Status Error for {asin}: {e}")
             return SpApiListingStatus(asin, "ACTIVE", False, [])
+
+    # Claims recovery / FBA reimbursements moved to Laravel (docs/13 §A7): the Reports API report
+    # that lists lost/damaged units is created with a POST + async poll, which this GET-only service
+    # cannot do. The ADK now reads the reconciled result via GET /marketplaces/{mp}/claims-recovery
+    # (see src/adk_tools/claims_recovery_tools.py).

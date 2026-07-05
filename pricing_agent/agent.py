@@ -22,6 +22,7 @@ from src.agents.specialists.executive_specialist import executive_specialist
 from src.agents.specialists.copilot_specialist import copilot_specialist
 from src.agents.specialists.business_growth_specialist import business_growth_specialist
 from src.agents.specialists.ai_manager_specialist import ai_manager_specialist
+from src.agents.specialists.claims_recovery_specialist import claims_recovery_specialist
 
 root_agent = Agent(
     name="marketplace_intelligence",
@@ -56,6 +57,8 @@ root_agent = Agent(
     - Launch this product / is it ready to publish / launch readiness checklist  -> `copilot`.
     - Top opportunities / where can I grow / which listings need attention (catalog-wide)  ->
       `business_growth`.
+    - Am I owed money by Amazon / FBA reimbursements / lost, damaged or destroyed inventory claims /
+      what can I recover  -> `claims_recovery`.
     - Broad strategic GOALS like "how can I increase sales 15% this month" / build me a plan  ->
       `ai_manager`.
 
@@ -88,5 +91,6 @@ root_agent = Agent(
         copilot_specialist,
         business_growth_specialist,
         ai_manager_specialist,
+        claims_recovery_specialist,
     ],
 )

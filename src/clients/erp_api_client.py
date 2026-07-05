@@ -149,6 +149,11 @@ class ErpApiClient:
         return await self._get(f"/marketplaces/{marketplace_id}/sync-check",
                                params={"asin": asin})
 
+    async def claims_recovery(self, marketplace_id: int, days: int = 90) -> dict:
+        """A7 → GET /marketplaces/{mp}/claims-recovery (Finances + Reports; reconciled reimbursements)"""
+        return await self._get(f"/marketplaces/{marketplace_id}/claims-recovery",
+                               params={"days": days})
+
     # ---------------- GROUP B: Analytics / reporting (raw ERP → computed) -----
 
     async def dashboard(self, days: int = 30) -> dict:
